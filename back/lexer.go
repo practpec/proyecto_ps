@@ -79,59 +79,107 @@ const (
 type Lexer struct {
 	suspiciousPatterns map[string]TokenType
 	obfuscationPatterns []string
+	legitimateCommands map[string]bool
+	contextualPatterns map[string][]string
 }
 
 func NewLexer() *Lexer {
 	return &Lexer{
 		suspiciousPatterns: map[string]TokenType{
-			// Comandos críticos maliciosos
-			`(?i)(invoke-expression|iex)`: INVOKE_EXPRESSION,
-			`(?i)downloadstring`: DOWNLOAD_STRING,
-			`(?i)(encodedcommand|enc)`: ENCODED_COMMAND,
-			`(?i)(bypass|unrestricted)`: BYPASS,
+			// Comandos críticos maliciosos - más específicos
+			`(?i)\binvoke-expression\b`: INVOKE_EXPRESSION,
+			`(?i)\biex\b`: INVOKE_EXPRESSION,
+			`(?i)downloadstring\s*\(`: DOWNLOAD_STRING,
+			`(?i)-encodedcommand\s+[A-Za-z0-9+/=]{20,}`: ENCODED_COMMAND,
+			`(?i)-enc\s+[A-Za-z0-9+/=]{20,}`: ENCODED_COMMAND,
 			
-			// Comandos sospechosos
-			`(?i)(windowstyle\s+hidden|createnowindow)`: HIDDEN_WINDOW,
-			`(?i)(noprofile|nop)`: NO_PROFILE,
-			`(?i)executionpolicy`: EXECUTION_POLICY,
-			`(?i)(downloadfile|webclient)`: DOWNLOAD_FILE,
-			`(?i)start-process`: START_PROCESS,
-			`(?i)(hkcu|hklm|registry)`: REGISTRY_KEY,
-			`(?i)(get-wmiobject|gwmi)`: WMI_OBJECT,
-			`(?i)compress-archive`: COMPRESS_ARCHIVE,
-			`(?i)(invoke-webrequest|iwr|wget|curl)`: INVOKE_WEBREQUEST,
-			`(?i)new-object.*net\.webclient`: NET_WEBCLIENT,
+			// Patrones de ofuscación específicos
+			`(?i)"[a-z]"\s*\+\s*"[a-z]"\s*\+\s*"[a-z]"`: OBFUSCATED_VAR,
+			`(?i)\$[a-z]\d+[a-z]\d+\s*=`: OBFUSCATED_VAR,
+			`(?i)frombase64string.*frombase64string`: BASE64_ENCODED,
+			`(?i)-join.*tochararray.*sort.*random`: OBFUSCATED_VAR,
 			
-			// Persistencia y evasión
-			`(?i)(new-scheduledtask|schtasks)`: SCHEDULED_TASK,
-			`(?i)(new-service|sc\.exe)`: SERVICE_CREATION,
-			`(?i)(currentversion\\run|userinit)`: AUTORUN_KEY,
-			`(?i)(set-mppreference|defender)`: DISABLE_DEFENDER,
-			`(?i)(clear-eventlog|wevtutil)`: CLEAR_EVENTLOG,
+			// URLs maliciosas específicas
+			`(?i)(malicious|evil|bad|hack)\.com`: DOWNLOAD_FILE,
+			`(?i)https?://.*\.(exe|dll|scr|bat|ps1)`: DOWNLOAD_FILE,
+			
+			// Bypass solo en contextos sospechosos
+			`(?i)set-executionpolicy\s+(bypass|unrestricted)`: BYPASS,
+			`(?i)-executionpolicy\s+(bypass|unrestricted)`: BYPASS,
+			
+			// Comandos sospechosos - más específicos
+			`(?i)-(windowstyle\s+hidden|createnowindow)`: HIDDEN_WINDOW,
+			`(?i)-(noprofile|nop)\s`: NO_PROFILE,
+			`(?i)downloadfile\s*\(.*http`: DOWNLOAD_FILE,
+			`(?i)start-process.*-windowstyle\s+hidden`: START_PROCESS,
+			
+			// Persistencia y evasión - patrones más específicos
+			`(?i)new-scheduledtask.*-action.*-trigger`: SCHEDULED_TASK,
+			`(?i)schtasks.*\/create.*\/tr`: SCHEDULED_TASK,
+			`(?i)new-service.*-binarypath`: SERVICE_CREATION,
+			`(?i)currentversion\\run.*-name`: AUTORUN_KEY,
+			`(?i)set-mppreference.*-disable`: DISABLE_DEFENDER,
+			`(?i)clear-eventlog\s+-logname`: CLEAR_EVENTLOG,
+			`(?i)wevtutil.*clear-log`: CLEAR_EVENTLOG,
 			
 			// Herramientas de ataque conocidas
-			`(?i)mimikatz`: MIMIKATZ,
-			`(?i)powersploit`: POWERSPLOIT,
-			`(?i)empire`: EMPIRE,
-			`(?i)metasploit`: METASPLOIT,
-			`(?i)(cobalt|beacon)`: COBALT_STRIKE,
+			`(?i)invoke-mimikatz`: MIMIKATZ,
+			`(?i)invoke-powersploit`: POWERSPLOIT,
+			`(?i)empire\s+module`: EMPIRE,
+			`(?i)metasploit.*payload`: METASPLOIT,
+			`(?i)cobalt.*beacon`: COBALT_STRIKE,
 			
-			// Exfiltración
-			`(?i)send-mailmessage`: MAIL_MESSAGE,
-			`(?i)ftp.*upload`: FTP_UPLOAD,
-			`(?i)invoke-restmethod.*post`: HTTP_POST,
-			`(?i)nslookup.*txt`: DNS_EXFIL,
+			// Exfiltración - más específicos
+			`(?i)send-mailmessage.*-attachment`: MAIL_MESSAGE,
+			`(?i)invoke-restmethod.*-method\s+post.*-body`: HTTP_POST,
 			
 			// Anti-análisis
-			`(?i)(start-sleep|sleep)`: SLEEP_DELAY,
-			`(?i)get-random.*start-sleep`: RANDOM_DELAY,
-			`(?i)(get-process.*vmware|virtualbox)`: ENVIRONMENT_CHECK,
-			`(?i)(checkremotedebugger|isdebuggerpresent)`: DEBUGGER_CHECK,
+			`(?i)get-process.*vmware|virtualbox|vbox`: ENVIRONMENT_CHECK,
+			`(?i)checkremotedebugger|isdebuggerpresent`: DEBUGGER_CHECK,
+			
+			// Patrones específicos de ofuscación avanzada
+			`(?i)reversedcmd|normalcmd`: OBFUSCATED_VAR,
+			`(?i)tochararray.*foreach.*sort.*random`: OBFUSCATED_VAR,
 		},
+		
+		// Comandos legítimos que NO deben ser marcados como sospechosos
+		legitimateCommands: map[string]bool{
+			"get-date": true,
+			"write-host": true,
+			"write-output": true,
+			"test-path": true,
+			"new-item": true,
+			"copy-item": true,
+			"remove-item": true,
+			"get-childitem": true,
+			"join-path": true,
+			"split-path": true,
+			"add-content": true,
+			"out-file": true,
+			"out-null": true,
+			"measure-object": true,
+			"sort-object": true,
+			"where-object": true,
+			"foreach-object": true,
+			"select-object": true,
+			"group-object": true,
+			"write-logmessage": true, // Función personalizada del script de backup
+			"start-documentbackup": true,
+			"remove-oldbackups": true,
+			"new-backupreport": true,
+		},
+		
+		// Patrones contextuales - requieren contexto específico para ser sospechosos
+		contextualPatterns: map[string][]string{
+			"invoke-webrequest": {"http://", "https://", "ftp://"},
+			"new-object": {"net.webclient", "system.net.webclient", "msxml2.xmlhttp"},
+			"start-process": {"-windowstyle hidden", "-createnowindow"},
+		},
+		
 		obfuscationPatterns: []string{
-			`[A-Za-z0-9+/]{20,}={0,2}`, // Base64
-			`\$[a-z]{1,3}\d*`,          // Variables ofuscadas
-			`[^\w\s]{3,}`,              // Caracteres especiales
+			`[A-Za-z0-9+/]{50,}={0,2}`, // Base64 largo (50+ chars)
+			`\$[a-z]{1,2}\d*\s*=`,      // Variables muy cortas
+			`[^\w\s\.\-]{5,}`,          // Caracteres especiales en secuencia
 		},
 	}
 }
@@ -139,13 +187,24 @@ func NewLexer() *Lexer {
 func (l *Lexer) Tokenize(script string) []Token {
 	var tokens []Token
 	
-	// Detectar patrones sospechosos
+	// Detectar patrones sospechosos con contexto
 	for pattern, tokenType := range l.suspiciousPatterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindAllStringIndex(script, -1)
 		
 		for _, match := range matches {
 			value := script[match[0]:match[1]]
+			
+			// Verificar si es un comando legítimo
+			if l.isLegitimateCommand(value) {
+				continue
+			}
+			
+			// Verificar contexto para patrones contextuales
+			if !l.isInSuspiciousContext(value, script, match[0]) {
+				continue
+			}
+			
 			severity := l.getSeverity(tokenType)
 			
 			token := Token{
@@ -159,16 +218,62 @@ func (l *Lexer) Tokenize(script string) []Token {
 		}
 	}
 	
-	// Detectar ofuscación
-	tokens = append(tokens, l.detectObfuscation(script)...)
+	// Detectar ofuscación verdadera
+	tokens = append(tokens, l.detectRealObfuscation(script)...)
 	
-	// Detectar Base64
-	tokens = append(tokens, l.detectBase64(script)...)
+	// Detectar Base64 malicioso
+	tokens = append(tokens, l.detectMaliciousBase64(script)...)
 	
 	return tokens
 }
 
-func (l *Lexer) detectObfuscation(script string) []Token {
+func (l *Lexer) isLegitimateCommand(value string) bool {
+	// Extraer el comando principal
+	cleaned := strings.ToLower(strings.TrimSpace(value))
+	
+	// Remover parámetros para obtener solo el comando
+	parts := strings.Fields(cleaned)
+	if len(parts) == 0 {
+		return false
+	}
+	
+	command := parts[0]
+	
+	// Remover guiones del inicio
+	command = strings.TrimLeft(command, "-")
+	
+	return l.legitimateCommands[command]
+}
+
+func (l *Lexer) isInSuspiciousContext(value string, script string, position int) bool {
+	lowerValue := strings.ToLower(value)
+	
+	// Para comandos contextuales, verificar si tienen contexto sospechoso
+	for command, contexts := range l.contextualPatterns {
+		if strings.Contains(lowerValue, command) {
+			// Buscar contexto sospechoso en ventana de 200 caracteres
+			start := max(0, position-100)
+			end := min(len(script), position+100)
+			context := strings.ToLower(script[start:end])
+			
+			hasSuspiciousContext := false
+			for _, ctx := range contexts {
+				if strings.Contains(context, ctx) {
+					hasSuspiciousContext = true
+					break
+				}
+			}
+			
+			if !hasSuspiciousContext {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
+
+func (l *Lexer) detectRealObfuscation(script string) []Token {
 	var tokens []Token
 	
 	for _, pattern := range l.obfuscationPatterns {
@@ -178,33 +283,59 @@ func (l *Lexer) detectObfuscation(script string) []Token {
 		for _, match := range matches {
 			value := script[match[0]:match[1]]
 			
-			var tokenType TokenType
-			if l.isBase64Like(value) {
-				tokenType = BASE64_ENCODED
-			} else if strings.HasPrefix(value, "$") {
-				tokenType = OBFUSCATED_VAR
-			} else {
-				tokenType = SPECIAL_CHAR
+			// Solo marcar como ofuscación si realmente parece sospechoso
+			if l.isReallyObfuscated(value) {
+				var tokenType TokenType
+				if l.isBase64Like(value) {
+					tokenType = BASE64_ENCODED
+				} else if strings.HasPrefix(value, "$") {
+					tokenType = OBFUSCATED_VAR
+				} else {
+					tokenType = SPECIAL_CHAR
+				}
+				
+				token := Token{
+					Type:         tokenType,
+					Value:        value,
+					Position:     match[0],
+					IsSuspicious: true,
+					Severity:     "medium",
+				}
+				tokens = append(tokens, token)
 			}
-			
-			token := Token{
-				Type:         tokenType,
-				Value:        value,
-				Position:     match[0],
-				IsSuspicious: true,
-				Severity:     "medium",
-			}
-			tokens = append(tokens, token)
 		}
 	}
 	
 	return tokens
 }
 
-func (l *Lexer) detectBase64(script string) []Token {
+func (l *Lexer) isReallyObfuscated(value string) bool {
+	// No marcar variables normales como ofuscadas
+	if strings.HasPrefix(value, "$") {
+		// Variables como $env:, $_.Property, etc. son normales
+		if strings.Contains(value, "env:") || 
+		   strings.Contains(value, "_.") ||
+		   strings.Contains(value, "SourcePath") ||
+		   strings.Contains(value, "BackupPath") ||
+		   strings.Contains(value, "RetentionDays") ||
+		   len(value) > 5 { // Variables con nombres descriptivos
+			return false
+		}
+	}
+	
+	// No marcar texto HTML/paths como ofuscación
+	if strings.Contains(value, "<") || strings.Contains(value, ">") ||
+	   strings.Contains(value, "\\") || strings.Contains(value, "/") {
+		return false
+	}
+	
+	return true
+}
+
+func (l *Lexer) detectMaliciousBase64(script string) []Token {
 	var tokens []Token
 	
-	// Buscar strings que parezcan Base64
+	// Buscar strings que parezcan Base64 malicioso
 	re := regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`)
 	matches := re.FindAllStringIndex(script, -1)
 	
@@ -241,8 +372,9 @@ func (l *Lexer) isBase64Like(s string) bool {
 
 func (l *Lexer) containsSuspiciousContent(content string) bool {
 	suspiciousKeywords := []string{
-		"powershell", "cmd", "invoke", "download", "execute",
-		"bypass", "hidden", "noprofile", "encodedcommand",
+		"invoke-expression", "iex", "downloadstring", "bypass",
+		"hidden", "noprofile", "encodedcommand", "mimikatz",
+		"empire", "metasploit", "cobalt", "powersploit",
 	}
 	
 	lowerContent := strings.ToLower(content)
@@ -280,4 +412,18 @@ func (l *Lexer) getSeverity(tokenType TokenType) string {
 	}
 	
 	return "low"
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

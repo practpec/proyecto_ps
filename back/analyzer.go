@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"time"
 )
 
@@ -66,12 +68,12 @@ func (psa *PowerShellAnalyzer) AnalyzeScript(script string) AnalysisResult {
 	// Fase 3: Análisis semántico
 	semanticAnalysis := psa.semanticAnalyzer.AnalyzeSemantics(script, tokens, syntaxAnalysis)
 	
-	// Calcular riesgo general y nivel de amenaza
+	// Calcular riesgo general y nivel de amenaza con mejor lógica
 	overallRisk := psa.calculateOverallRisk(lexicalResult, syntaxAnalysis, semanticAnalysis)
-	threatLevel := psa.determineThreatLevel(overallRisk, semanticAnalysis)
+	threatLevel := psa.determineThreatLevel(overallRisk, semanticAnalysis, lexicalResult)
 	
 	// Generar recomendaciones
-	recommendations := psa.generateRecommendations(lexicalResult, syntaxAnalysis, semanticAnalysis)
+	recommendations := psa.generateRecommendations(lexicalResult, syntaxAnalysis, semanticAnalysis, threatLevel)
 	
 	// Crear resumen
 	summary := psa.generateSummary(lexicalResult, syntaxAnalysis, semanticAnalysis, threatLevel)
@@ -163,9 +165,9 @@ func (psa *PowerShellAnalyzer) determineObfuscationLevel(tokens []Token) string 
 	
 	if obfuscationScore == 0 {
 		return "none"
-	} else if obfuscationScore < 5 {
+	} else if obfuscationScore < 3 {
 		return "low"
-	} else if obfuscationScore < 15 {
+	} else if obfuscationScore < 8 {
 		return "medium"
 	} else {
 		return "high"
@@ -173,16 +175,24 @@ func (psa *PowerShellAnalyzer) determineObfuscationLevel(tokens []Token) string 
 }
 
 func (psa *PowerShellAnalyzer) calculateOverallRisk(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis) int {
+	// Para scripts legítimos, usar cálculo conservador
+	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
+		return psa.calculateLegitimateRisk(lexical, syntax, semantic)
+	}
+	
 	risk := 0
 	
 	// Riesgo del análisis léxico (30%)
-	lexicalRisk := (lexical.TokenStatistics.HighSeverity * 10) + 
-	              (lexical.TokenStatistics.MediumSeverity * 5) + 
-	              (lexical.TokenStatistics.LowSeverity * 2)
+	lexicalRisk := (lexical.TokenStatistics.HighSeverity * 15) + 
+	              (lexical.TokenStatistics.MediumSeverity * 8) + 
+	              (lexical.TokenStatistics.LowSeverity * 3)
 	risk += int(float64(lexicalRisk) * 0.3)
 	
 	// Riesgo del análisis sintáctico (20%)
-	syntaxRisk := syntax.ComplexityScore + (len(syntax.Anomalies) * 5)
+	syntaxRisk := syntax.ComplexityScore/10 + (len(syntax.Anomalies) * 8)
+	if !syntax.IsValid {
+		syntaxRisk += 15
+	}
 	risk += int(float64(syntaxRisk) * 0.2)
 	
 	// Riesgo del análisis semántico (50%)
@@ -196,32 +206,92 @@ func (psa *PowerShellAnalyzer) calculateOverallRisk(lexical LexicalResult, synta
 	return risk
 }
 
-func (psa *PowerShellAnalyzer) determineThreatLevel(riskScore int, semantic SemanticAnalysis) string {
-	// Determinar nivel basado en el puntaje de riesgo y características semánticas
-	if riskScore >= 80 || 
-	   semantic.MaliciousIntent.DataExfiltration || 
-	   semantic.MaliciousIntent.PrivilegeEscalation {
+func (psa *PowerShellAnalyzer) calculateLegitimateRisk(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis) int {
+	risk := 0
+	
+	// Para scripts legítimos, solo contar tokens realmente críticos
+	risk += lexical.TokenStatistics.HighSeverity * 5
+	risk += lexical.TokenStatistics.MediumSeverity * 2
+	
+	// Agregar complejidad solo si es excesiva
+	if syntax.ComplexityScore > 50 {
+		risk += (syntax.ComplexityScore - 50) / 10
+	}
+	
+	// Usar el riesgo semántico calculado (ya ajustado para scripts legítimos)
+	risk += semantic.RiskScore / 2
+	
+	// Limitar el riesgo máximo para scripts legítimos
+	if risk > 35 {
+		risk = 35
+	}
+	
+	return risk
+}
+
+func (psa *PowerShellAnalyzer) determineThreatLevel(riskScore int, semantic SemanticAnalysis, lexical LexicalResult) string {
+	// Para scripts administrativos legítimos, usar lógica especial
+	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
+		if lexical.TokenStatistics.HighSeverity > 0 {
+			return "LOW"
+		}
+		if lexical.TokenStatistics.MediumSeverity > 10 {
+			return "LOW"
+		}
+		return "MINIMAL"
+	}
+	
+	// Verificar indicadores críticos primero
+	hasCriticalIndicators := semantic.MaliciousIntent.DataExfiltration || 
+	                       semantic.MaliciousIntent.PrivilegeEscalation ||
+	                       lexical.TokenStatistics.HighSeverity > 3
+	
+	hasHighIndicators := semantic.MaliciousIntent.Persistence || 
+	                    semantic.EvasionTechniques.AntiForensic ||
+	                    lexical.TokenStatistics.HighSeverity > 1
+	
+	hasMediumIndicators := semantic.MaliciousIntent.PayloadDownload || 
+	                      semantic.MaliciousIntent.DefenseEvasion ||
+	                      lexical.TokenStatistics.MediumSeverity > 5
+	
+	// Determinar nivel basado en indicadores y puntaje
+	if hasCriticalIndicators && riskScore >= 70 {
 		return "CRITICAL"
-	} else if riskScore >= 60 || 
-	          semantic.MaliciousIntent.Persistence || 
-	          semantic.EvasionTechniques.AntiForensic {
+	} else if hasHighIndicators && riskScore >= 50 {
 		return "HIGH"
-	} else if riskScore >= 40 || 
-	          semantic.MaliciousIntent.PayloadDownload || 
-	          semantic.MaliciousIntent.DefenseEvasion {
+	} else if hasMediumIndicators && riskScore >= 30 {
 		return "MEDIUM"
-	} else if riskScore >= 20 || 
-	          semantic.MaliciousIntent.Reconnaissance {
+	} else if riskScore >= 15 {
 		return "LOW"
 	} else {
 		return "MINIMAL"
 	}
 }
 
-func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis) []string {
+func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis, threatLevel string) []string {
 	var recommendations []string
 	
-	// Recomendaciones basadas en análisis léxico
+	// Para scripts legítimos, recomendaciones menos alarmantes
+	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
+		if lexical.TokenStatistics.HighSeverity > 0 {
+			recommendations = append(recommendations, "Revisar tokens marcados como críticos para verificar legitimidad")
+		}
+		if lexical.TokenStatistics.MediumSeverity > 10 {
+			recommendations = append(recommendations, "Considerar simplificar el script para reducir complejidad")
+		}
+		if syntax.ComplexityScore > 100 {
+			recommendations = append(recommendations, "Script complejo detectado - documentar funcionalidad para futura referencia")
+		}
+		
+		// Si no hay recomendaciones específicas, dar una general
+		if len(recommendations) == 0 {
+			recommendations = append(recommendations, "Script parece legítimo - mantener monitoreo rutinario")
+		}
+		
+		return recommendations
+	}
+	
+	// Recomendaciones para scripts sospechosos/maliciosos
 	if lexical.TokenStatistics.HighSeverity > 0 {
 		recommendations = append(recommendations, "ACCIÓN INMEDIATA: Bloquear ejecución del script - tokens maliciosos críticos detectados")
 	}
@@ -230,7 +300,6 @@ func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, sy
 		recommendations = append(recommendations, "Alta ofuscación detectada - implementar técnicas avanzadas de deofuscación")
 	}
 	
-	// Recomendaciones basadas en análisis sintáctico
 	if syntax.ComplexityScore > 50 {
 		recommendations = append(recommendations, "Estructura de script compleja detectada - aumentar monitoreo y registro")
 	}
@@ -274,7 +343,29 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	var mainThreats []string
 	var keyFindings []string
 	
-	// Identificar amenazas principales
+	// Para scripts legítimos, generar resumen apropiado
+	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
+		if lexical.TokenStatistics.HighSeverity > 0 {
+			keyFindings = append(keyFindings, "Algunos tokens marcados requieren revisión")
+		}
+		if syntax.ComplexityScore > 50 {
+			keyFindings = append(keyFindings, "Script con complejidad moderada")
+		}
+		
+		if len(keyFindings) == 0 {
+			keyFindings = append(keyFindings, "Script administrativo estándar")
+		}
+		
+		return AnalysisSummary{
+			MainThreats:    []string{},
+			KeyFindings:    keyFindings,
+			AttackVector:   "N/A - Script Legítimo",
+			Confidence:     "Alta",
+			ActionRequired: "Monitoreo Rutinario",
+		}
+	}
+	
+	// Para scripts maliciosos, identificar amenazas principales
 	if semantic.MaliciousIntent.DataExfiltration {
 		mainThreats = append(mainThreats, "Exfiltración de Datos")
 	}
@@ -319,11 +410,11 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 		attackVector = "Escalación Local de Privilegios"
 	}
 	
-	// Determinar confianza
+	// Determinar confianza basada en la evidencia
 	confidence := "Baja"
 	if lexical.TokenStatistics.HighSeverity > 2 && semantic.RiskScore > 60 {
 		confidence = "Alta"
-	} else if lexical.TokenStatistics.SuspiciousTokens > 5 || semantic.RiskScore > 40 {
+	} else if lexical.TokenStatistics.HighSeverity > 0 || semantic.RiskScore > 40 {
 		confidence = "Media"
 	}
 	
@@ -338,6 +429,8 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 		actionRequired = "Monitoreo Mejorado"
 	case "LOW":
 		actionRequired = "Registrar y Monitorear"
+	case "MINIMAL":
+		actionRequired = "Monitoreo Rutinario"
 	}
 	
 	return AnalysisSummary{
@@ -350,10 +443,7 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 }
 
 func (psa *PowerShellAnalyzer) calculateScriptHash(script string) string {
-	// Implementación simple de hash - en producción usar SHA-256
-	hash := 0
-	for _, char := range script {
-		hash = hash*31 + int(char)
-	}
-	return string(rune(hash % 1000000))
+	// Usar SHA-256 para un hash más robusto
+	hash := sha256.Sum256([]byte(script))
+	return fmt.Sprintf("%x", hash)[:16] // Primeros 16 caracteres del hash
 }
