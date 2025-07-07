@@ -1,0 +1,539 @@
+# ==============================================================================
+# PowerShell Malware Analyzer - .gitignore
+# ==============================================================================
+
+# Operating System
+# ================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Backend (Go) - Carpeta 'back/'
+# ===============================
+# Binaries
+back/*.exe
+back/*.exe~
+back/*.dll
+back/*.so
+back/*.dylib
+back/powershell-analyzer
+back/powershell-analyzer.exe
+
+# Test binary, built with `go test -c`
+back/*.test
+
+# Output of the go coverage tool
+back/*.out
+
+# Dependency directories
+back/vendor/
+
+# Go workspace file
+back/go.work
+
+# Air live reload
+back/tmp/
+
+# Environment variables
+back/.env
+back/.env.local
+back/.env.production
+
+# Log files
+back/*.log
+back/logs/
+
+# Frontend (React) - Carpeta 'front/'
+# ===================================
+# Dependencies
+front/node_modules/
+front/.pnp
+front/.pnp.js
+
+# Production build
+front/build/
+front/dist/
+
+# Runtime data
+front/pids
+front/*.pid
+front/*.seed
+front/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+front/coverage/
+front/.nyc_output
+
+# ESLint cache
+front/.eslintcache
+
+# Parcel-bundler cache
+front/.cache/
+front/.parcel-cache
+
+# Next.js build output
+front/.next
+
+# Nuxt.js build / generate output
+front/.nuxt
+front/dist
+
+# Storybook build outputs
+front/.out
+front/.storybook-out
+
+# Temporary folders
+front/.tmp/
+front/.temp/
+
+# Optional npm cache directory
+front/.npm
+
+# Optional eslint cache
+front/.eslintcache
+
+# Optional REPL history
+front/.node_repl_history
+
+# Output of 'npm pack'
+front/*.tgz
+
+# Yarn Integrity file
+front/.yarn-integrity
+
+# TypeScript cache
+front/*.tsbuildinfo
+
+# Microbundle cache
+front/.rpt2_cache/
+front/.rts2_cache_cjs/
+front/.rts2_cache_es/
+front/.rts2_cache_umd/
+
+# Optional REPL history
+front/.node_repl_history
+
+# Development and Testing
+# ======================
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Documentation
+# =============
+# Auto-generated docs
+docs/api/
+docs/coverage/
+
+# Security and Config
+# ===================
+# API keys and secrets
+*.key
+*.pem
+*.crt
+*.p12
+secrets.yaml
+secrets.json
+config.local.*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Docker
+# ======
+.dockerignore
+Dockerfile.dev
+docker-compose.dev.yml
+
+# CI/CD
+# =====
+.github/workflows/*.yml
+!.github/workflows/main.yml
+
+# Deployment
+# ==========
+deploy/
+.deploy/
+*.tar.gz
+*.zip
+
+# Monitoring and Analytics
+# ========================
+# New Relic
+newrelic.ini
+
+# Sentry
+.sentryclirc
+
+# Project Specific
+# ================
+# Test scripts maliciosos (para evitar accidentes)
+test-samples/malicious/
+samples/real-malware/
+*.ps1.malicious
+
+# Resultados de análisis temporales
+analysis-results/
+temp-analysis/
+
+# Archivos de configuración local
+config.local.json
+settings.local.json
+
+# Certificados de desarrollo
+*.local.crt
+*.local.key
+
+# Archivos de base de datos local
+local.db
+dev.db
+
+# Cache de herramientas
+.cache/
+cache/
+
+# Archivos temporales del sistema
+*.tmp
+*.temp
+.temporary/
+
+# Logs de desarrollo
+debug.log
+error.log
+access.log
+
+# Performance monitoring
+perf.data
+perf.data.old
+
+# Coverage reports
+coverage.html
+coverage.xml
+coverage.lcov
+
+# Archivos específicos que pueden haberse subido por error
+front/package-lock.json
+.DS_Store# ==============================================================================
+# PowerShell Malware Analyzer - .gitignore
+# ==============================================================================
+
+# Operating System
+# ================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Backend (Go)
+# ============
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+powershell-analyzer
+powershell-analyzer.exe
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Air live reload
+tmp/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Log files
+*.log
+logs/
+
+# Frontend (React)
+# ===============
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Production build
+frontend/build/
+frontend/dist/
+
+# Runtime data
+frontend/pids
+frontend/*.pid
+frontend/*.seed
+frontend/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+frontend/coverage/
+frontend/.nyc_output
+
+# ESLint cache
+frontend/.eslintcache
+
+# Parcel-bundler cache
+frontend/.cache/
+frontend/.parcel-cache
+
+# Next.js build output
+frontend/.next
+
+# Nuxt.js build / generate output
+frontend/.nuxt
+frontend/dist
+
+# Storybook build outputs
+frontend/.out
+frontend/.storybook-out
+
+# Temporary folders
+frontend/.tmp/
+frontend/.temp/
+
+# Optional npm cache directory
+frontend/.npm
+
+# Optional eslint cache
+frontend/.eslintcache
+
+# Optional REPL history
+frontend/.node_repl_history
+
+# Output of 'npm pack'
+frontend/*.tgz
+
+# Yarn Integrity file
+frontend/.yarn-integrity
+
+# TypeScript cache
+frontend/*.tsbuildinfo
+
+# Microbundle cache
+frontend/.rpt2_cache/
+frontend/.rts2_cache_cjs/
+frontend/.rts2_cache_es/
+frontend/.rts2_cache_umd/
+
+# Optional REPL history
+frontend/.node_repl_history
+
+# Development and Testing
+# ======================
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Documentation
+# =============
+# Auto-generated docs
+docs/api/
+docs/coverage/
+
+# Security and Config
+# ===================
+# API keys and secrets
+*.key
+*.pem
+*.crt
+*.p12
+secrets.yaml
+secrets.json
+config.local.*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Docker
+# ======
+.dockerignore
+Dockerfile.dev
+docker-compose.dev.yml
+
+# CI/CD
+# =====
+.github/workflows/*.yml
+!.github/workflows/main.yml
+
+# Deployment
+# ==========
+deploy/
+.deploy/
+*.tar.gz
+*.zip
+
+# Monitoring and Analytics
+# ========================
+# New Relic
+newrelic.ini
+
+# Sentry
+.sentryclirc
+
+# Project Specific
+# ================
+# Test scripts maliciosos (para evitar accidentes)
+test-samples/malicious/
+samples/real-malware/
+*.ps1.malicious
+
+# Resultados de análisis temporales
+analysis-results/
+temp-analysis/
+
+# Archivos de configuración local
+config.local.json
+settings.local.json
+
+# Certificados de desarrollo
+*.local.crt
+*.local.key
+
+# Archivos de base de datos local
+local.db
+dev.db
+
+# Cache de herramientas
+.cache/
+cache/
+
+# Archivos temporales del sistema
+*.tmp
+*.temp
+.temporary/
+
+# Logs de desarrollo
+debug.log
+error.log
+access.log
+
+# Performance monitoring
+perf.data
+perf.data.old
+
+# Coverage reports
+coverage.html
+coverage.xml
+coverage.lcov
