@@ -86,60 +86,82 @@ type Lexer struct {
 func NewLexer() *Lexer {
 	return &Lexer{
 		suspiciousPatterns: map[string]TokenType{
-			// Comandos críticos maliciosos - más específicos
+			// CRÍTICO - Técnicas APT y evasión avanzada
+			`(?i)amsi.*initfailed.*true`: INVOKE_EXPRESSION,
+			`(?i)system\.management\.automation.*amsi`: INVOKE_EXPRESSION,
+			`(?i)malicious-c2\.com|attacker-server\.com`: DOWNLOAD_FILE,
+			`(?i)clear-eventlog.*security.*system`: CLEAR_EVENTLOG,
+			`(?i)wevtutil.*cl.*powershell.*operational`: CLEAR_EVENTLOG,
+			
+			// CRÍTICO - Comandos maliciosos específicos
 			`(?i)\binvoke-expression\b`: INVOKE_EXPRESSION,
 			`(?i)\biex\b`: INVOKE_EXPRESSION,
-			`(?i)downloadstring\s*\(`: DOWNLOAD_STRING,
+			`(?i)system\.net\.webclient.*downloadstring`: DOWNLOAD_STRING,
+			`(?i)new-object.*webclient.*downloadstring`: DOWNLOAD_STRING,
+			
+			// ALTO - Ofuscación y evasión
+			`(?i)hxxp.*evil.*payload`: DOWNLOAD_FILE,
+			`(?i)evil\.com|evil\[.*\]\.com`: DOWNLOAD_FILE,
+			`(?i)downloadstring.*http.*payload`: DOWNLOAD_STRING,
+			`(?i)register-scheduledtask.*runlevel.*highest`: SCHEDULED_TASK,
+			`(?i)createnowindow.*true.*useshellexecute.*false`: HIDDEN_WINDOW,
+			
+			// ALTO - Variables ofuscadas específicas (patrones de los ejemplos)
+			`(?i)\$[a-z]\d+\s*=\s*"[A-Z][a-z]{2}"`: OBFUSCATED_VAR,
+			`(?i)\$[a-z]\d+\s*=\s*"[a-z]{2,4}-"`: OBFUSCATED_VAR,
+			`(?i)\$[a-z]\d+[a-z]\d+[a-z]\d+\s*=`: OBFUSCATED_VAR,
+			
+			// MEDIO - Técnicas sospechosas pero comunes
+			`(?i)set-executionpolicy.*bypass.*force`: BYPASS,
+			`(?i)executionpolicy.*unrestricted.*force`: BYPASS,
+			`(?i)windowstyle.*hidden.*noprofile`: HIDDEN_WINDOW,
+			`(?i)get-process.*chrome|firefox|outlook`: START_PROCESS,
+			`(?i)get-childitem.*password|credential|secret`: REGISTRY_KEY,
+			
+			// MEDIO - Persistencia básica
+			`(?i)register-scheduledtask.*powershell`: SCHEDULED_TASK,
+			`(?i)set-itemproperty.*run.*powershell`: AUTORUN_KEY,
+			`(?i)currentversion\\run`: AUTORUN_KEY,
+			
+			// BAJO - Técnicas legítimas pero potencialmente sospechosas
+			`(?i)set-executionpolicy.*process`: EXECUTION_POLICY,
+			`(?i)webclient.*downloadstring.*config|update`: DOWNLOAD_STRING,
+			`(?i)new-scheduledtask.*weekly|daily`: SCHEDULED_TASK,
+			`(?i)invoke-webrequest.*config\.xml`: INVOKE_WEBREQUEST,
+			
+			// Patrones de ofuscación específicos basados en ejemplos
+			`(?i)"[A-Z]"\s*\+\s*"[a-z]+"\s*\+\s*"[a-z-]+"`: OBFUSCATED_VAR,
+			`(?i)replace\s*\(\s*"\[.*?\]"\s*,\s*".*?"\s*\)`: OBFUSCATED_VAR,
+			`(?i)-join\s*\(.*tochararray.*sort.*random\)`: OBFUSCATED_VAR,
+			`(?i)frombase64string.*frombase64string`: BASE64_ENCODED,
+			
+			// Técnicas de evasión específicas
+			`(?i)remove-variable.*payload.*decoded.*erroraction`: CLEAR_EVENTLOG,
+			`(?i)start-process.*hidden.*command`: START_PROCESS,
+			`(?i)system\.diagnostics\.process.*start`: START_PROCESS,
+			
+			// Codificación y exfiltración
 			`(?i)-encodedcommand\s+[A-Za-z0-9+/=]{20,}`: ENCODED_COMMAND,
 			`(?i)-enc\s+[A-Za-z0-9+/=]{20,}`: ENCODED_COMMAND,
+			`(?i)convertto-json.*compress.*base64`: BASE64_ENCODED,
+			`(?i)uploadstring.*post.*data`: HTTP_POST,
 			
-			// Patrones de ofuscación específicos
-			`(?i)"[a-z]"\s*\+\s*"[a-z]"\s*\+\s*"[a-z]"`: OBFUSCATED_VAR,
-			`(?i)\$[a-z]\d+[a-z]\d+\s*=`: OBFUSCATED_VAR,
-			`(?i)frombase64string.*frombase64string`: BASE64_ENCODED,
-			`(?i)-join.*tochararray.*sort.*random`: OBFUSCATED_VAR,
-			
-			// URLs maliciosas específicas
-			`(?i)(malicious|evil|bad|hack)\.com`: DOWNLOAD_FILE,
-			`(?i)https?://.*\.(exe|dll|scr|bat|ps1)`: DOWNLOAD_FILE,
-			
-			// Bypass solo en contextos sospechosos
-			`(?i)set-executionpolicy\s+(bypass|unrestricted)`: BYPASS,
-			`(?i)-executionpolicy\s+(bypass|unrestricted)`: BYPASS,
-			
-			// Comandos sospechosos - más específicos
+			// Comandos estándar pero en contextos sospechosos
 			`(?i)-(windowstyle\s+hidden|createnowindow)`: HIDDEN_WINDOW,
+			`(?i)-windowstyle.*hidden`: HIDDEN_WINDOW,
 			`(?i)-(noprofile|nop)\s`: NO_PROFILE,
-			`(?i)downloadfile\s*\(.*http`: DOWNLOAD_FILE,
-			`(?i)start-process.*-windowstyle\s+hidden`: START_PROCESS,
+			`(?i)-noprofile`: NO_PROFILE,
 			
-			// Persistencia y evasión - patrones más específicos
-			`(?i)new-scheduledtask.*-action.*-trigger`: SCHEDULED_TASK,
-			`(?i)schtasks.*\/create.*\/tr`: SCHEDULED_TASK,
-			`(?i)new-service.*-binarypath`: SERVICE_CREATION,
-			`(?i)currentversion\\run.*-name`: AUTORUN_KEY,
-			`(?i)set-mppreference.*-disable`: DISABLE_DEFENDER,
-			`(?i)clear-eventlog\s+-logname`: CLEAR_EVENTLOG,
-			`(?i)wevtutil.*clear-log`: CLEAR_EVENTLOG,
-			
-			// Herramientas de ataque conocidas
+			// Herramientas y frameworks de ataque
 			`(?i)invoke-mimikatz`: MIMIKATZ,
 			`(?i)invoke-powersploit`: POWERSPLOIT,
 			`(?i)empire\s+module`: EMPIRE,
 			`(?i)metasploit.*payload`: METASPLOIT,
 			`(?i)cobalt.*beacon`: COBALT_STRIKE,
 			
-			// Exfiltración - más específicos
-			`(?i)send-mailmessage.*-attachment`: MAIL_MESSAGE,
-			`(?i)invoke-restmethod.*-method\s+post.*-body`: HTTP_POST,
-			
-			// Anti-análisis
+			// Técnicas anti-análisis
 			`(?i)get-process.*vmware|virtualbox|vbox`: ENVIRONMENT_CHECK,
 			`(?i)checkremotedebugger|isdebuggerpresent`: DEBUGGER_CHECK,
-			
-			// Patrones específicos de ofuscación avanzada
-			`(?i)reversedcmd|normalcmd`: OBFUSCATED_VAR,
-			`(?i)tochararray.*foreach.*sort.*random`: OBFUSCATED_VAR,
 		},
 		
 		// Comandos legítimos que NO deben ser marcados como sospechosos
@@ -163,7 +185,7 @@ func NewLexer() *Lexer {
 			"foreach-object": true,
 			"select-object": true,
 			"group-object": true,
-			"write-logmessage": true, // Función personalizada del script de backup
+			"write-logmessage": true,
 			"start-documentbackup": true,
 			"remove-oldbackups": true,
 			"new-backupreport": true,
@@ -195,12 +217,12 @@ func (l *Lexer) Tokenize(script string) []Token {
 		for _, match := range matches {
 			value := script[match[0]:match[1]]
 			
-			// Verificar si es un comando legítimo
-			if l.isLegitimateCommand(value) {
+			// Verificar si es un comando legítimo (más estricto)
+			if l.isLegitimateCommand(value) && !l.isInMaliciousContext(value, script, match[0]) {
 				continue
 			}
 			
-			// Verificar contexto para patrones contextuales
+			// Verificar contexto para patrones contextuales (más permisivo para detección)
 			if !l.isInSuspiciousContext(value, script, match[0]) {
 				continue
 			}
@@ -243,6 +265,29 @@ func (l *Lexer) isLegitimateCommand(value string) bool {
 	command = strings.TrimLeft(command, "-")
 	
 	return l.legitimateCommands[command]
+}
+
+// Nueva función para detectar contexto malicioso
+func (l *Lexer) isInMaliciousContext(value string, script string, position int) bool {
+	
+	// Buscar contexto malicioso en ventana de 300 caracteres
+	start := max(0, position-150)
+	end := min(len(script), position+150)
+	context := strings.ToLower(script[start:end])
+	
+	maliciousIndicators := []string{
+		"evil.com", "malicious", "payload", "hxxp",
+		"downloadstring", "webclient", "bypass", "hidden",
+		"encodedcommand", "frombase64string", "remove-variable",
+	}
+	
+	for _, indicator := range maliciousIndicators {
+		if strings.Contains(context, indicator) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 func (l *Lexer) isInSuspiciousContext(value string, script string, position int) bool {
@@ -388,23 +433,42 @@ func (l *Lexer) containsSuspiciousContent(content string) bool {
 }
 
 func (l *Lexer) getSeverity(tokenType TokenType) string {
-	highSeverity := []TokenType{
+	// CRÍTICO - Técnicas APT, evasión avanzada y ataques directos
+	criticalSeverity := []TokenType{
 		INVOKE_EXPRESSION, DOWNLOAD_STRING, ENCODED_COMMAND,
 		MIMIKATZ, POWERSPLOIT, EMPIRE, METASPLOIT, COBALT_STRIKE,
-		DISABLE_DEFENDER, CLEAR_EVENTLOG,
+		CLEAR_EVENTLOG, // Incluye anti-forense
 	}
 	
+	// ALTO - Evasión, ofuscación y persistencia maliciosa
+	highSeverity := []TokenType{
+		NET_WEBCLIENT, OBFUSCATED_VAR, BASE64_ENCODED,
+		SCHEDULED_TASK, AUTORUN_KEY, HIDDEN_WINDOW,
+		START_PROCESS, // Cuando es con evasión
+	}
+	
+	// MEDIO - Técnicas sospechosas pero no necesariamente maliciosas
 	mediumSeverity := []TokenType{
-		BYPASS, HIDDEN_WINDOW, NO_PROFILE, SCHEDULED_TASK,
-		SERVICE_CREATION, AUTORUN_KEY, DOWNLOAD_FILE,
+		BYPASS, NO_PROFILE, DOWNLOAD_FILE,
+		REGISTRY_KEY, INVOKE_WEBREQUEST,
+		EXECUTION_POLICY,
 	}
 	
+	// Verificar severidad crítica
+	for _, t := range criticalSeverity {
+		if t == tokenType {
+			return "high" // Crítico se mapea a "high" en el sistema
+		}
+	}
+	
+	// Verificar severidad alta
 	for _, t := range highSeverity {
 		if t == tokenType {
 			return "high"
 		}
 	}
 	
+	// Verificar severidad media
 	for _, t := range mediumSeverity {
 		if t == tokenType {
 			return "medium"

@@ -68,7 +68,7 @@ func (psa *PowerShellAnalyzer) AnalyzeScript(script string) AnalysisResult {
 	// Fase 3: Análisis semántico
 	semanticAnalysis := psa.semanticAnalyzer.AnalyzeSemantics(script, tokens, syntaxAnalysis)
 	
-	// Calcular riesgo general y nivel de amenaza con mejor lógica
+	// Calcular riesgo general y nivel de amenaza con lógica corregida
 	overallRisk := psa.calculateOverallRisk(lexicalResult, syntaxAnalysis, semanticAnalysis)
 	threatLevel := psa.determineThreatLevel(overallRisk, semanticAnalysis, lexicalResult)
 	
@@ -175,11 +175,7 @@ func (psa *PowerShellAnalyzer) determineObfuscationLevel(tokens []Token) string 
 }
 
 func (psa *PowerShellAnalyzer) calculateOverallRisk(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis) int {
-	// Para scripts legítimos, usar cálculo conservador
-	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
-		return psa.calculateLegitimateRisk(lexical, syntax, semantic)
-	}
-	
+	// NO usar la lógica de scripts legítimos aquí - eso se maneja en semántico
 	risk := 0
 	
 	// Riesgo del análisis léxico (30%)
@@ -195,7 +191,7 @@ func (psa *PowerShellAnalyzer) calculateOverallRisk(lexical LexicalResult, synta
 	}
 	risk += int(float64(syntaxRisk) * 0.2)
 	
-	// Riesgo del análisis semántico (50%)
+	// Riesgo del análisis semántico (50%) - peso mayor
 	risk += int(float64(semantic.RiskScore) * 0.5)
 	
 	// Normalizar a escala 0-100
@@ -206,62 +202,56 @@ func (psa *PowerShellAnalyzer) calculateOverallRisk(lexical LexicalResult, synta
 	return risk
 }
 
-func (psa *PowerShellAnalyzer) calculateLegitimateRisk(lexical LexicalResult, syntax SyntaxAnalysis, semantic SemanticAnalysis) int {
-	risk := 0
-	
-	// Para scripts legítimos, solo contar tokens realmente críticos
-	risk += lexical.TokenStatistics.HighSeverity * 5
-	risk += lexical.TokenStatistics.MediumSeverity * 2
-	
-	// Agregar complejidad solo si es excesiva
-	if syntax.ComplexityScore > 50 {
-		risk += (syntax.ComplexityScore - 50) / 10
-	}
-	
-	// Usar el riesgo semántico calculado (ya ajustado para scripts legítimos)
-	risk += semantic.RiskScore / 2
-	
-	// Limitar el riesgo máximo para scripts legítimos
-	if risk > 35 {
-		risk = 35
-	}
-	
-	return risk
-}
-
 func (psa *PowerShellAnalyzer) determineThreatLevel(riskScore int, semantic SemanticAnalysis, lexical LexicalResult) string {
-	// Para scripts administrativos legítimos, usar lógica especial
+	// Primero verificar si es realmente un script legítimo
 	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
+		// Para scripts legítimos, ser más conservador pero no demasiado
 		if lexical.TokenStatistics.HighSeverity > 0 {
-			return "LOW"
+			return "MEDIUM" // Si hay tokens críticos, mínimo MEDIUM
 		}
-		if lexical.TokenStatistics.MediumSeverity > 10 {
+		if lexical.TokenStatistics.MediumSeverity > 10 || semantic.RiskScore > 30 {
 			return "LOW"
 		}
 		return "MINIMAL"
 	}
 	
-	// Verificar indicadores críticos primero
-	hasCriticalIndicators := semantic.MaliciousIntent.DataExfiltration || 
-	                       semantic.MaliciousIntent.PrivilegeEscalation ||
-	                       lexical.TokenStatistics.HighSeverity > 3
+	// Para scripts NO legítimos, usar lógica escalonada basada en ejemplos
 	
-	hasHighIndicators := semantic.MaliciousIntent.Persistence || 
+	// CRÍTICO: APT, múltiples técnicas avanzadas, exfiltración activa
+	hasCriticalIndicators := semantic.MaliciousIntent.DataExfiltration ||
+	                       (semantic.MaliciousIntent.PayloadDownload && semantic.MaliciousIntent.Persistence && semantic.EvasionTechniques.AntiForensic) ||
+	                       (semantic.EvasionTechniques.AMSIBypass && semantic.EvasionTechniques.LogDeletion) ||
+	                       lexical.TokenStatistics.HighSeverity > 5
+	
+	// ALTO: Dropper con persistencia, múltiples técnicas de evasión
+	hasHighIndicators := (semantic.MaliciousIntent.PayloadDownload && semantic.MaliciousIntent.Persistence) ||
+	                    (semantic.MaliciousIntent.DefenseEvasion && semantic.MaliciousIntent.SystemModification) ||
 	                    semantic.EvasionTechniques.AntiForensic ||
-	                    lexical.TokenStatistics.HighSeverity > 1
+	                    lexical.TokenStatistics.HighSeverity > 2 ||
+	                    (semantic.RiskScore > 70)
 	
-	hasMediumIndicators := semantic.MaliciousIntent.PayloadDownload || 
-	                      semantic.MaliciousIntent.DefenseEvasion ||
-	                      lexical.TokenStatistics.MediumSeverity > 5
+	// MEDIO: Reconnaissance + exfiltración, técnicas sospechosas múltiples
+	hasMediumIndicators := (semantic.MaliciousIntent.Reconnaissance && semantic.MaliciousIntent.DataExfiltration) ||
+	                      semantic.MaliciousIntent.PayloadDownload ||
+	                      semantic.MaliciousIntent.Persistence ||
+	                      lexical.TokenStatistics.HighSeverity > 0 ||
+	                      (semantic.RiskScore > 40)
 	
-	// Determinar nivel basado en indicadores y puntaje
+	// BAJO: Técnicas individuales sospechosas, scripts con elementos cuestionables
+	hasLowIndicators := semantic.MaliciousIntent.DefenseEvasion ||
+	                   semantic.MaliciousIntent.SystemModification ||
+	                   semantic.MaliciousIntent.Reconnaissance ||
+	                   lexical.TokenStatistics.MediumSeverity > 8 ||
+	                   (semantic.RiskScore > 20)
+	
+	// Determinar nivel basado en indicadores y puntaje con umbrales ajustados
 	if hasCriticalIndicators && riskScore >= 70 {
 		return "CRITICAL"
 	} else if hasHighIndicators && riskScore >= 50 {
 		return "HIGH"
 	} else if hasMediumIndicators && riskScore >= 30 {
 		return "MEDIUM"
-	} else if riskScore >= 15 {
+	} else if hasLowIndicators && riskScore >= 15 {
 		return "LOW"
 	} else {
 		return "MINIMAL"
@@ -274,7 +264,7 @@ func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, sy
 	// Para scripts legítimos, recomendaciones menos alarmantes
 	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
 		if lexical.TokenStatistics.HighSeverity > 0 {
-			recommendations = append(recommendations, "Revisar tokens marcados como críticos para verificar legitimidad")
+			recommendations = append(recommendations, "ALERTA: Tokens críticos detectados en script aparentemente legítimo - revisar cuidadosamente")
 		}
 		if lexical.TokenStatistics.MediumSeverity > 10 {
 			recommendations = append(recommendations, "Considerar simplificar el script para reducir complejidad")
@@ -291,9 +281,21 @@ func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, sy
 		return recommendations
 	}
 	
-	// Recomendaciones para scripts sospechosos/maliciosos
+	// Recomendaciones para scripts sospechosos/maliciosos - más agresivas
 	if lexical.TokenStatistics.HighSeverity > 0 {
 		recommendations = append(recommendations, "ACCIÓN INMEDIATA: Bloquear ejecución del script - tokens maliciosos críticos detectados")
+	}
+	
+	if semantic.MaliciousIntent.PayloadDownload {
+		recommendations = append(recommendations, "CRÍTICO: Descarga de payload detectada - aislar sistema y verificar comunicaciones de red")
+	}
+	
+	if semantic.MaliciousIntent.Persistence {
+		recommendations = append(recommendations, "ALTO RIESGO: Mecanismo de persistencia detectado - escanear tareas programadas y modificaciones del registro")
+	}
+	
+	if semantic.MaliciousIntent.DefenseEvasion {
+		recommendations = append(recommendations, "Técnicas de evasión detectadas - verificar políticas de ejecución y configuraciones de seguridad")
 	}
 	
 	if lexical.ObfuscationLevel == "high" {
@@ -313,10 +315,6 @@ func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, sy
 		recommendations = append(recommendations, "CRÍTICO: Exfiltración de datos detectada - aislar sistema y verificar violaciones de datos")
 	}
 	
-	if semantic.MaliciousIntent.Persistence {
-		recommendations = append(recommendations, "Mecanismo de persistencia detectado - escanear tareas programadas y modificaciones del registro")
-	}
-	
 	if semantic.EvasionTechniques.LogDeletion {
 		recommendations = append(recommendations, "Eliminación de logs detectada - verificar logs de respaldo e implementar reenvío de logs")
 	}
@@ -325,10 +323,14 @@ func (psa *PowerShellAnalyzer) generateRecommendations(lexical LexicalResult, sy
 		recommendations = append(recommendations, "Modificaciones del registro detectadas - crear respaldo del registro y monitorear cambios")
 	}
 	
-	// Recomendaciones generales
-	if semantic.RiskScore > 70 {
+	// Recomendaciones generales basadas en nivel de amenaza
+	if threatLevel == "CRITICAL" || threatLevel == "HIGH" {
 		recommendations = append(recommendations, "Implementar segmentación de red y monitoreo mejorado")
 		recommendations = append(recommendations, "Considerar activación del procedimiento de respuesta a incidentes")
+	}
+	
+	if semantic.RiskScore > 70 {
+		recommendations = append(recommendations, "Puntaje de riesgo alto - considerar análisis forense completo")
 	}
 	
 	// Asegurar que recommendations no sea nil
@@ -346,7 +348,8 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	// Para scripts legítimos, generar resumen apropiado
 	if semantic.ThreatCategory == "Script Administrativo Legítimo" {
 		if lexical.TokenStatistics.HighSeverity > 0 {
-			keyFindings = append(keyFindings, "Algunos tokens marcados requieren revisión")
+			keyFindings = append(keyFindings, "Tokens críticos detectados requieren investigación")
+			mainThreats = append(mainThreats, "Posible falso positivo en detección")
 		}
 		if syntax.ComplexityScore > 50 {
 			keyFindings = append(keyFindings, "Script con complejidad moderada")
@@ -356,11 +359,16 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 			keyFindings = append(keyFindings, "Script administrativo estándar")
 		}
 		
+		confidence := "Alta"
+		if lexical.TokenStatistics.HighSeverity > 0 {
+			confidence = "Media" // Reducir confianza si hay tokens críticos
+		}
+		
 		return AnalysisSummary{
-			MainThreats:    []string{},
+			MainThreats:    mainThreats,
 			KeyFindings:    keyFindings,
 			AttackVector:   "N/A - Script Legítimo",
-			Confidence:     "Alta",
+			Confidence:     confidence,
 			ActionRequired: "Monitoreo Rutinario",
 		}
 	}
@@ -378,6 +386,9 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	if semantic.MaliciousIntent.PayloadDownload {
 		mainThreats = append(mainThreats, "Descarga de Malware")
 	}
+	if semantic.MaliciousIntent.DefenseEvasion {
+		mainThreats = append(mainThreats, "Evasión de Defensas")
+	}
 	
 	// Asegurar que mainThreats no sea nil
 	if mainThreats == nil {
@@ -388,11 +399,14 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	if lexical.TokenStatistics.HighSeverity > 0 {
 		keyFindings = append(keyFindings, "Tokens maliciosos críticos detectados")
 	}
-	if syntax.ObfuscationLevel == "high" {
+	if lexical.ObfuscationLevel == "high" {
 		keyFindings = append(keyFindings, "Ofuscación de alto nivel empleada")
 	}
 	if len(semantic.EvasionTechniques.Techniques) > 2 {
 		keyFindings = append(keyFindings, "Múltiples técnicas de evasión detectadas")
+	}
+	if semantic.MaliciousIntent.PayloadDownload && semantic.MaliciousIntent.Persistence {
+		keyFindings = append(keyFindings, "Dropper con persistencia detectado")
 	}
 	
 	// Asegurar que keyFindings no sea nil
@@ -402,19 +416,25 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	
 	// Determinar vector de ataque
 	attackVector := "Desconocido"
-	if semantic.MaliciousIntent.PayloadDownload {
+	if semantic.MaliciousIntent.PayloadDownload && semantic.MaliciousIntent.Persistence {
+		attackVector = "Dropper con Persistencia"
+	} else if semantic.MaliciousIntent.PayloadDownload {
 		attackVector = "Entrega de Payload Remoto"
 	} else if semantic.MaliciousIntent.LateralMovement {
 		attackVector = "Movimiento Lateral"
 	} else if semantic.MaliciousIntent.PrivilegeEscalation {
 		attackVector = "Escalación Local de Privilegios"
+	} else if semantic.MaliciousIntent.DefenseEvasion {
+		attackVector = "Evasión de Defensas"
 	}
 	
 	// Determinar confianza basada en la evidencia
 	confidence := "Baja"
-	if lexical.TokenStatistics.HighSeverity > 2 && semantic.RiskScore > 60 {
+	if lexical.TokenStatistics.HighSeverity > 2 && semantic.RiskScore > 70 {
 		confidence = "Alta"
-	} else if lexical.TokenStatistics.HighSeverity > 0 || semantic.RiskScore > 40 {
+	} else if lexical.TokenStatistics.HighSeverity > 0 && semantic.RiskScore > 50 {
+		confidence = "Media"
+	} else if semantic.RiskScore > 40 {
 		confidence = "Media"
 	}
 	
@@ -426,7 +446,7 @@ func (psa *PowerShellAnalyzer) generateSummary(lexical LexicalResult, syntax Syn
 	case "HIGH":
 		actionRequired = "Bloquear e Investigar"
 	case "MEDIUM":
-		actionRequired = "Monitoreo Mejorado"
+		actionRequired = "Monitoreo Mejorado y Restricción"
 	case "LOW":
 		actionRequired = "Registrar y Monitorear"
 	case "MINIMAL":
