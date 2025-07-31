@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import ScriptInput from './components/ScriptInput';
+import ScriptInputUnoptimized from './components/ScriptInputUnoptimized';
 import AnalysisResults from './components/AnalysisResults';
 import ThreatDashboard from './components/ThreatDashboard';
 import { Shield, AlertTriangle, Activity, Search, Code, Brain } from 'lucide-react';
 import ApiService from './services/apiService';
 import AnalysisService from './services/analysisService';
+import { simulateCPUStress, simulateMemoryStress } from './services/stressSimulator';
 
 function App() {
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -30,6 +32,43 @@ function App() {
 
       // Realizar el análisis
       const result = await ApiService.analyzeScript(script);
+      
+      // Verificar que el resultado tenga datos válidos
+      if (!AnalysisService.hasValidData(result)) {
+        console.warn('El resultado del análisis parece estar vacío o incompleto');
+      }
+
+      setAnalysisResult(result);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error en el análisis:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const analyzeScriptUnoptimized = async (script) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Validar el script antes de enviarlo
+      const validation = ApiService.validateScript(script);
+      
+      if (!validation.isValid) {
+        throw new Error(validation.errors.join(', '));
+      }
+
+      // Mostrar advertencias si las hay
+      if (validation.warnings.length > 0) {
+        console.warn('Advertencias del script:', validation.warnings);
+      }
+
+      // Realizar el análisis
+      const result = await ApiService.analyzeScriptUnoptimized(script);
+
+      simulateCPUStress(3000);      // Simula 3 segundos de carga de CPU.
+      simulateMemoryStress(300, 3000)
       
       // Verificar que el resultado tenga datos válidos
       if (!AnalysisService.hasValidData(result)) {
@@ -127,6 +166,10 @@ function App() {
             <ScriptInput 
               onAnalyze={analyzeScript} 
               isLoading={isLoading}
+            />
+            <ScriptInputUnoptimized
+            onAnalyze={analyzeScriptUnoptimized}
+            isLoading={isLoading}
             />
             
             {/* Error Display */}

@@ -40,6 +40,39 @@ export class ApiService {
     }
   }
 
+  static async analyzeScriptUnoptimized(script) {
+    if (!script || typeof script !== 'string') {
+      throw new Error('El script debe ser una cadena de texto válida');
+    }
+
+    if (script.trim().length === 0) {
+      throw new Error('El script no puede estar vacío');
+    }
+
+    try {
+      const response = await fetch(`${this.BASE_URL}/api/analyze-unoptimized`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ script: script.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(this.getErrorMessage(response.status, errorText));
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('No se puede conectar con el servidor. Verifica que el backend esté ejecutándose.');
+      }
+      throw error;
+    }
+  }
+
   /**
    * Verifica el estado de salud del API
    * @returns {Promise<Object>} - Estado del servidor
